@@ -1,0 +1,12 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --green: #3B6D11; --green-mid: #639922; --green-light: #EAF3DE; --green-border: #C0DD97;
+  --ink: #1a1a18; --ink-mid: #4a4a45; --ink-light: #8a8a82;
+  --cream: #f7f5f0; --cream-dark: #ede9e1;
+  --border: rgba(26,26,24,0.12); --border-mid: rgba(26,26,24,0.22);
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+}
+html, body { height: 100%; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: var(--cream); color: var(--ink); -webkit-font-smoothing: antialiased; }
+input, select, textarea, button { font-family: inherit; }
+@keyframes spin { to { transform: rotate(360deg); } }

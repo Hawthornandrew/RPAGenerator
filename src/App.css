@@ -1,0 +1,21 @@
+.full-center { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.spinner { width: 28px; height: 28px; border: 3px solid rgba(0,0,0,0.1); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.loading-text { font-size: 14px; color: var(--ink-light); }
+.error-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 2rem; max-width: 440px; text-align: center; }
+.error-icon { font-size: 28px; margin-bottom: 0.75rem; }
+.error-card h2 { font-size: 18px; margin-bottom: 0.5rem; }
+.error-card p { font-size: 14px; color: var(--ink-mid); margin-bottom: 0.5rem; line-height: 1.5; }
+.error-hint { font-size: 13px; color: var(--ink-light); }
+.error-hint code { font-family: monospace; font-size: 12px; background: var(--cream-dark); padding: 1px 5px; border-radius: 3px; }
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.app-header { background: var(--ink); padding: 0 1.5rem; height: 56px; display: flex; align-items: center; position: sticky; top: 0; z-index: 100; }
+.header-inner { max-width: 720px; margin: 0 auto; width: 100%; display: flex; align-items: center; justify-content: space-between; }
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark { font-family: 'DM Serif Display', serif; font-size: 17px; color: #fff; background: var(--green); padding: 3px 9px; border-radius: var(--radius-sm); }
+.logo-text { font-size: 15px; font-weight: 500; color: #fff; }
+.logo-sub { font-size: 12px; color: rgba(255,255,255,0.38); }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.remap-btn { font-size: 11px; color: rgba(255,255,255,0.45); background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
+.remap-btn:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.35); }
+.app-main { flex: 1; padding: 2rem 1.5rem 4rem; }
+@media (max-width: 480px) { .logo-sub, .remap-btn { display: none; } .app-main { padding: 1.25rem 1rem 3rem; } }

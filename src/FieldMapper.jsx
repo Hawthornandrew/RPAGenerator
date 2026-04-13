@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { FIELDS } from './fields';
 import { renderPageToCanvas, canvasToPDF } from './pdfUtils';
 import { saveCoordinates } from './api';
 import './FieldMapper.css';
 
-export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCancel }) {
+export default function FieldMapper({
+  fields: FIELDS = [],
+  initialCoords,
+  pdfBytes,
+  onComplete,
+  onCancel,
+  onManageFields,   // ← opens FieldManager overlay
+  adminPin: initPin,
+}) {
   const [coords,     setCoords]     = useState(initialCoords || {});
   const [fieldIdx,   setFieldIdx]   = useState(0);
   const [pageInfo,   setPageInfo]   = useState(null);
@@ -12,7 +19,7 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
   const [loading,    setLoading]    = useState(false);
   const [saving,     setSaving]     = useState(false);
   const [saveResult, setSaveResult] = useState(null);
-  const [pin,        setPin]        = useState('');
+  const [pin,        setPin]        = useState(initPin || '');
   const [showPin,    setShowPin]    = useState(false);
   const [cursor,     setCursor]     = useState(null);
 
@@ -21,9 +28,21 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
 
   const field       = FIELDS[fieldIdx];
   const mappedCount = FIELDS.filter(f => coords[f.id]).length;
-  const allMapped   = mappedCount === FIELDS.length;
+  const allMapped   = FIELDS.length > 0 && mappedCount === FIELDS.length;
 
-  // Render page whenever field changes
+  // Re-sync coords when initialCoords changes (e.g. after fields are added)
+  useEffect(() => {
+    setCoords(initialCoords || {});
+  }, [initialCoords]);
+
+  // Jump to first unmapped field when FIELDS list changes
+  useEffect(() => {
+    if (FIELDS.length === 0) return;
+    const first = FIELDS.findIndex(f => !coords[f.id]);
+    setFieldIdx(first === -1 ? 0 : first);
+  }, [FIELDS.length]);
+
+  // Render page whenever active field changes
   useEffect(() => {
     if (!pdfBytes || !field) return;
     setLoading(true);
@@ -31,11 +50,11 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
     renderPageToCanvas(pdfBytes, field.page, w)
       .then(result => { setPageCanvas(result); setPageInfo(result); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [pdfBytes, fieldIdx]);
+  }, [pdfBytes, fieldIdx, FIELDS.length]);
 
-  // Redraw canvas with pins
+  // Redraw canvas with all pins for this page
   useEffect(() => {
-    if (!pageCanvas || !canvasRef.current) return;
+    if (!pageCanvas || !canvasRef.current || !field) return;
     const ctx = canvasRef.current.getContext('2d');
     canvasRef.current.width  = pageCanvas.canvas.width;
     canvasRef.current.height = pageCanvas.canvas.height;
@@ -48,20 +67,17 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
       const cy = (pageCanvas.pdfHeight - c.pdfY) * pageCanvas.scale;
       const isActive = f.id === field.id;
 
-      // Crosshair lines
       ctx.strokeStyle = isActive ? '#3B6D11' : 'rgba(99,153,34,0.5)';
       ctx.lineWidth   = isActive ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
 
-      // Dot
       ctx.beginPath();
       ctx.arc(cx, cy, isActive ? 5 : 3, 0, Math.PI * 2);
       ctx.fillStyle = isActive ? '#3B6D11' : 'rgba(99,153,34,0.7)';
       ctx.fill();
 
-      // Label bubble
-      const label = f.sampleValue;
+      const label = f.sampleValue || f.label;
       ctx.font = `${isActive ? 'bold ' : ''}11px DM Sans, sans-serif`;
       const tw  = ctx.measureText(label).width;
       ctx.fillStyle = isActive ? '#3B6D11' : 'rgba(59,109,17,0.8)';
@@ -69,10 +85,10 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
       ctx.fillStyle = '#fff';
       ctx.fillText(label, cx + 12, cy - 2);
     });
-  }, [pageCanvas, coords, fieldIdx]);
+  }, [pageCanvas, coords, fieldIdx, FIELDS]);
 
   const handleClick = useCallback(e => {
-    if (!pageInfo || !canvasRef.current) return;
+    if (!pageInfo || !canvasRef.current || !field) return;
     const rect   = canvasRef.current.getBoundingClientRect();
     const scaleX = canvasRef.current.width  / rect.width;
     const scaleY = canvasRef.current.height / rect.height;
@@ -81,10 +97,9 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
     const { pdfX, pdfY } = canvasToPDF(cx, cy, pageInfo.pdfWidth, pageInfo.pdfHeight, pageInfo.scale);
     const next = { ...coords, [field.id]: { page: field.page, pdfX, pdfY } };
     setCoords(next);
-    // Auto-advance to next unmapped field
     const ni = FIELDS.findIndex((f, i) => i > fieldIdx && !next[f.id]);
     if (ni !== -1) setFieldIdx(ni);
-  }, [pageInfo, coords, field, fieldIdx]);
+  }, [pageInfo, coords, field, fieldIdx, FIELDS]);
 
   const handleMouseMove = useCallback(e => {
     if (!canvasRef.current) return;
@@ -104,44 +119,56 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
     setSaving(false);
   }
 
-  function handleDone() {
-    onComplete(coords);
-  }
-
   return (
     <div className="mapper-shell">
-      {/* Sidebar */}
       <aside className="mapper-sidebar">
+
+        {/* Header */}
         <div className="sidebar-header">
-          <div className="sidebar-brand">H&amp;A Field Mapper</div>
+          <div className="sidebar-brand-row">
+            <div className="sidebar-brand">H&amp;A Field Mapper</div>
+            {onManageFields && (
+              <button className="btn-manage-fields" onClick={onManageFields} title="Add or edit fields">
+                Manage fields
+              </button>
+            )}
+          </div>
           <div className="sidebar-prog-label">{mappedCount} / {FIELDS.length} placed</div>
           <div className="sidebar-prog-track">
-            <div className="sidebar-prog-fill" style={{ width: `${(mappedCount / FIELDS.length) * 100}%` }} />
+            <div className="sidebar-prog-fill" style={{ width: FIELDS.length ? `${(mappedCount / FIELDS.length) * 100}%` : '0%' }} />
           </div>
         </div>
 
+        {/* Current field cue */}
         <div className="sidebar-cue">
-          {allMapped
-            ? <div className="cue-done">✓ All fields placed</div>
-            : (
-              <div className="cue-active">
-                <div className="cue-num">{fieldIdx + 1}</div>
-                <div>
-                  <div className="cue-title">Click to place:</div>
-                  <div className="cue-field">{field?.label}</div>
-                  <div className="cue-sample">e.g. "{field?.sampleValue}"</div>
-                  <div className="cue-page">Page {field?.page}</div>
-                </div>
+          {FIELDS.length === 0 ? (
+            <div className="cue-empty">
+              No fields defined yet.{' '}
+              {onManageFields && (
+                <button className="cue-link" onClick={onManageFields}>Add fields →</button>
+              )}
+            </div>
+          ) : allMapped ? (
+            <div className="cue-done">✓ All fields placed</div>
+          ) : (
+            <div className="cue-active">
+              <div className="cue-num">{fieldIdx + 1}</div>
+              <div>
+                <div className="cue-title">Click to place:</div>
+                <div className="cue-field">{field?.label}</div>
+                <div className="cue-sample">e.g. "{field?.sampleValue}"</div>
+                <div className="cue-page">Page {field?.page}</div>
               </div>
-            )
-          }
-          {!allMapped && (
+            </div>
+          )}
+          {!allMapped && FIELDS.length > 0 && (
             <button className="btn-skip" onClick={() => setFieldIdx(i => Math.min(i + 1, FIELDS.length - 1))}>
               Skip →
             </button>
           )}
         </div>
 
+        {/* Field list */}
         <div className="field-list">
           {FIELDS.map((f, i) => (
             <div
@@ -166,29 +193,27 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
           ))}
         </div>
 
+        {/* Footer: save + actions */}
         <div className="sidebar-footer">
-          {/* Save to server */}
-          {!showPin
-            ? (
-              <button className="btn-save" onClick={() => setShowPin(true)}>
-                Save to server
+          {!showPin ? (
+            <button className="btn-save" onClick={() => setShowPin(true)}>
+              Save positions to server
+            </button>
+          ) : (
+            <div className="pin-entry">
+              <input
+                type="password"
+                placeholder="Admin PIN"
+                value={pin}
+                onChange={e => setPin(e.target.value)}
+                className="pin-input"
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+              />
+              <button className="btn-save" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
               </button>
-            )
-            : (
-              <div className="pin-entry">
-                <input
-                  type="password"
-                  placeholder="Admin PIN"
-                  value={pin}
-                  onChange={e => setPin(e.target.value)}
-                  className="pin-input"
-                />
-                <button className="btn-save" onClick={handleSave} disabled={saving}>
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            )
-          }
+            </div>
+          )}
 
           {saveResult && (
             <div className={`save-result ${saveResult.ok ? 'save-result--ok' : 'save-result--err'}`}>
@@ -196,7 +221,7 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
               {saveResult.ok && saveResult.value && (
                 <>
                   <p style={{ marginTop: 6, fontSize: 11 }}>
-                    Copy this value into your <code>FIELD_COORDINATES</code> env var in Vercel, then redeploy:
+                    Paste into <code>FIELD_COORDINATES</code> in Vercel → redeploy:
                   </p>
                   <textarea
                     readOnly
@@ -209,7 +234,7 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
             </div>
           )}
 
-          <button className="btn-done" onClick={handleDone}>
+          <button className="btn-done" onClick={() => onComplete(coords)}>
             {allMapped ? 'Start generating offers →' : 'Use current positions →'}
           </button>
 
@@ -219,12 +244,22 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
         </div>
       </aside>
 
-      {/* Canvas */}
+      {/* PDF canvas */}
       <main className="mapper-main" ref={containerRef}>
         {loading && (
           <div className="canvas-loading">
             <div className="spinner" />
             <span>Rendering page {field?.page}…</span>
+          </div>
+        )}
+        {!loading && !field && FIELDS.length === 0 && (
+          <div className="canvas-empty">
+            <p>No fields to place yet.</p>
+            {onManageFields && (
+              <button className="btn-done" style={{ marginTop: 12 }} onClick={onManageFields}>
+                + Add your first field
+              </button>
+            )}
           </div>
         )}
         <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -235,15 +270,17 @@ export default function FieldMapper({ initialCoords, pdfBytes, onComplete, onCan
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setCursor(null)}
           />
-          {cursor && !loading && (
+          {cursor && !loading && field && (
             <div className="cursor-tip" style={{ left: cursor.x + 14, top: cursor.y - 10 }}>
-              {field?.label}
+              {field.label}
             </div>
           )}
         </div>
-        <div className="canvas-hint">
-          Page {field?.page} — click exactly where the text should appear
-        </div>
+        {field && (
+          <div className="canvas-hint">
+            Page {field.page} — click exactly where the text should appear
+          </div>
+        )}
       </main>
     </div>
   );

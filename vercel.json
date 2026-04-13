@@ -1,6 +1,11 @@
 {
   "buildCommand": "react-scripts build",
   "outputDirectory": "build",
+  "functions": {
+    "api/coordinates.py": { "runtime": "@vercel/python" },
+    "api/fields.py":      { "runtime": "@vercel/python" },
+    "api/template.py":    { "runtime": "@vercel/python" }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)",     "destination": "/index.html" }

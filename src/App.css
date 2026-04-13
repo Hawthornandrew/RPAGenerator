@@ -15,7 +15,7 @@
 .logo-text { font-size: 15px; font-weight: 500; color: #fff; }
 .logo-sub { font-size: 12px; color: rgba(255,255,255,0.38); }
 .header-right { display: flex; align-items: center; gap: 12px; }
-.remap-btn { font-size: 11px; color: rgba(255,255,255,0.45); background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
-.remap-btn:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.35); }
+.header-btn { font-size: 11px; color: rgba(255,255,255,0.45); background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
+.header-btn:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.35); }
 .app-main { flex: 1; padding: 2rem 1.5rem 4rem; }
-@media (max-width: 480px) { .logo-sub, .remap-btn { display: none; } .app-main { padding: 1.25rem 1rem 3rem; } }
+@media (max-width: 480px) { .logo-sub, .header-btn { display: none; } .app-main { padding: 1.25rem 1rem 3rem; } }

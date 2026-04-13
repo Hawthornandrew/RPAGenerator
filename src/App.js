@@ -1,27 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import FieldMapper    from './FieldMapper';
+import FieldManager   from './FieldManager';
 import OfferGenerator from './OfferGenerator';
-import { fetchCoordinates, fetchTemplate } from './api';
+import { fetchCoordinates, fetchTemplate, fetchFields } from './api';
 import './App.css';
 
 export default function App() {
   const [mode,        setMode]        = useState('loading');
   const [coordinates, setCoordinates] = useState({});
   const [pdfBytes,    setPdfBytes]    = useState(null);
+  const [fields,      setFields]      = useState([]);
   const [loadError,   setLoadError]   = useState('');
+  const [showManager, setShowManager] = useState(false);
+  const [adminPin,    setAdminPin]    = useState('');
 
   useEffect(() => {
     async function init() {
       try {
-        const [coords, bytes] = await Promise.all([
+        const [coords, bytes, fieldDefs] = await Promise.all([
           fetchCoordinates(),
           fetchTemplate(),
+          fetchFields(),
         ]);
         setCoordinates(coords);
         setPdfBytes(bytes);
-        // If admin has never mapped fields, open mapper; otherwise go straight to generator
-        const hasCoords = Object.keys(coords).length > 0;
-        setMode(hasCoords ? 'generator' : 'mapper');
+        setFields(fieldDefs);
+        setMode(Object.keys(coords).length > 0 ? 'generator' : 'mapper');
       } catch (e) {
         setLoadError(e.message);
         setMode('error');
@@ -29,6 +33,15 @@ export default function App() {
     }
     init();
   }, []);
+
+  // Called by FieldManager when fields are saved.
+  // Updates live state immediately — new fields appear in the mapper + form
+  // without needing a page reload. User still needs to paste FIELD_DEFINITIONS
+  // into Vercel and redeploy to persist across sessions.
+  function handleFieldsSaved(updatedFields) {
+    setFields(updatedFields);
+    setShowManager(false);
+  }
 
   function handleMapComplete(coords) {
     setCoordinates(coords);
@@ -62,15 +75,30 @@ export default function App() {
 
   if (mode === 'mapper') {
     return (
-      <FieldMapper
-        initialCoords={coordinates}
-        pdfBytes={pdfBytes}
-        onComplete={handleMapComplete}
-        onCancel={() => setMode('generator')}
-      />
+      <>
+        <FieldMapper
+          fields={fields}
+          initialCoords={coordinates}
+          pdfBytes={pdfBytes}
+          onComplete={handleMapComplete}
+          onCancel={Object.keys(coordinates).length > 0 ? () => setMode('generator') : null}
+          onManageFields={() => setShowManager(true)}
+          adminPin={adminPin}
+        />
+        {showManager && (
+          <FieldManager
+            fields={fields}
+            onSave={handleFieldsSaved}
+            onClose={() => setShowManager(false)}
+            adminPin={adminPin}
+            onAdminPin={setAdminPin}
+          />
+        )}
+      </>
     );
   }
 
+  // Generator mode
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -81,19 +109,34 @@ export default function App() {
           </div>
           <div className="header-right">
             <span className="logo-sub">Hawthorn &amp; Albatross</span>
-            <button className="remap-btn" onClick={() => setMode('mapper')}>
-              Edit field positions
+            <button className="header-btn" onClick={() => setShowManager(true)}>
+              Manage fields
+            </button>
+            <button className="header-btn" onClick={() => setMode('mapper')}>
+              Edit positions
             </button>
           </div>
         </div>
       </header>
+
       <main className="app-main">
         <OfferGenerator
           coordinates={coordinates}
           pdfBytes={pdfBytes}
+          fields={fields}
           onRemap={() => setMode('mapper')}
         />
       </main>
+
+      {showManager && (
+        <FieldManager
+          fields={fields}
+          onSave={handleFieldsSaved}
+          onClose={() => setShowManager(false)}
+          adminPin={adminPin}
+          onAdminPin={setAdminPin}
+        />
+      )}
     </div>
   );
 }

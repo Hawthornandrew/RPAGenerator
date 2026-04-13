@@ -11,11 +11,6 @@ const FIXED_STEPS = [
   { label: '4 / 4', title: 'Parties & generate',  sub: 'Seller info, then download the filled RPA PDF.' },
 ];
 
-  property: 0,
-  offer:    1,
-  timeline: 2,
-  parties:  3,
-};
 
 function fmtPrice(raw) {
   if (!raw) return '';

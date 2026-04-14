@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { renderPageToCanvas, canvasToPDF } from './pdfUtils';
+import { renderPageToCanvas, canvasToPDF, normaliseCoords } from './pdfUtils';
 import { saveCoordinates } from './api';
 import './FieldMapper.css';
 
@@ -9,10 +9,11 @@ export default function FieldMapper({
   pdfBytes,
   onComplete,
   onCancel,
-  onManageFields,   // ← opens FieldManager overlay
+  onManageFields,
   adminPin: initPin,
 }) {
-  const [coords,     setCoords]     = useState(initialCoords || {});
+  // coords: { [fieldId]: [ { page, pdfX, pdfY }, ... ] }
+  const [coords,     setCoords]     = useState(() => normaliseCoords(initialCoords || {}));
   const [fieldIdx,   setFieldIdx]   = useState(0);
   const [pageInfo,   setPageInfo]   = useState(null);
   const [pageCanvas, setPageCanvas] = useState(null);
@@ -27,18 +28,17 @@ export default function FieldMapper({
   const canvasRef    = useRef(null);
 
   const field       = FIELDS[fieldIdx];
-  const mappedCount = FIELDS.filter(f => coords[f.id]).length;
+  // A field is "placed" if it has at least one coordinate
+  const mappedCount = FIELDS.filter(f => (coords[f.id] || []).length > 0).length;
   const allMapped   = FIELDS.length > 0 && mappedCount === FIELDS.length;
 
-  // Re-sync coords when initialCoords changes (e.g. after fields are added)
   useEffect(() => {
-    setCoords(initialCoords || {});
+    setCoords(normaliseCoords(initialCoords || {}));
   }, [initialCoords]);
 
-  // Jump to first unmapped field when FIELDS list changes
   useEffect(() => {
     if (FIELDS.length === 0) return;
-    const first = FIELDS.findIndex(f => !coords[f.id]);
+    const first = FIELDS.findIndex(f => (coords[f.id] || []).length === 0);
     setFieldIdx(first === -1 ? 0 : first);
   }, [FIELDS.length]);
 
@@ -61,29 +61,37 @@ export default function FieldMapper({
     ctx.drawImage(pageCanvas.canvas, 0, 0);
 
     FIELDS.forEach(f => {
-      const c = coords[f.id];
-      if (!c || c.page !== field.page) return;
-      const cx = c.pdfX * pageCanvas.scale;
-      const cy = (pageCanvas.pdfHeight - c.pdfY) * pageCanvas.scale;
+      const positions = (coords[f.id] || []).filter(p => p.page === field.page);
+      if (!positions.length) return;
       const isActive = f.id === field.id;
 
-      ctx.strokeStyle = isActive ? '#3B6D11' : 'rgba(99,153,34,0.5)';
-      ctx.lineWidth   = isActive ? 1.5 : 1;
-      ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
+      positions.forEach((pos, pinIdx) => {
+        const cx = pos.pdfX * pageCanvas.scale;
+        const cy = (pageCanvas.pdfHeight - pos.pdfY) * pageCanvas.scale;
 
-      ctx.beginPath();
-      ctx.arc(cx, cy, isActive ? 5 : 3, 0, Math.PI * 2);
-      ctx.fillStyle = isActive ? '#3B6D11' : 'rgba(99,153,34,0.7)';
-      ctx.fill();
+        // Crosshair
+        ctx.strokeStyle = isActive ? '#3B6D11' : 'rgba(99,153,34,0.5)';
+        ctx.lineWidth   = isActive ? 1.5 : 1;
+        ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
 
-      const label = f.sampleValue || f.label;
-      ctx.font = `${isActive ? 'bold ' : ''}11px DM Sans, sans-serif`;
-      const tw  = ctx.measureText(label).width;
-      ctx.fillStyle = isActive ? '#3B6D11' : 'rgba(59,109,17,0.8)';
-      ctx.fillRect(cx + 8, cy - 12, tw + 8, 14);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(label, cx + 12, cy - 2);
+        // Dot
+        ctx.beginPath();
+        ctx.arc(cx, cy, isActive ? 5 : 3, 0, Math.PI * 2);
+        ctx.fillStyle = isActive ? '#3B6D11' : 'rgba(99,153,34,0.7)';
+        ctx.fill();
+
+        // Label — show pin number if multiple
+        const label = positions.length > 1
+          ? `${f.sampleValue || f.label} (${pinIdx + 1})`
+          : (f.sampleValue || f.label);
+        ctx.font = `${isActive ? 'bold ' : ''}11px DM Sans, sans-serif`;
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = isActive ? '#3B6D11' : 'rgba(59,109,17,0.8)';
+        ctx.fillRect(cx + 8, cy - 12, tw + 8, 14);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, cx + 12, cy - 2);
+      });
     });
   }, [pageCanvas, coords, fieldIdx, FIELDS]);
 
@@ -95,17 +103,32 @@ export default function FieldMapper({
     const cx     = (e.clientX - rect.left) * scaleX;
     const cy     = (e.clientY - rect.top)  * scaleY;
     const { pdfX, pdfY } = canvasToPDF(cx, cy, pageInfo.pdfWidth, pageInfo.pdfHeight, pageInfo.scale);
-    const next = { ...coords, [field.id]: { page: field.page, pdfX, pdfY } };
-    setCoords(next);
-    const ni = FIELDS.findIndex((f, i) => i > fieldIdx && !next[f.id]);
-    if (ni !== -1) setFieldIdx(ni);
-  }, [pageInfo, coords, field, fieldIdx, FIELDS]);
+
+    // Add this position to the field's array (allows multiple pins)
+    setCoords(prev => ({
+      ...prev,
+      [field.id]: [...(prev[field.id] || []), { page: field.page, pdfX, pdfY }],
+    }));
+  }, [pageInfo, field]);
 
   const handleMouseMove = useCallback(e => {
     if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     setCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   }, []);
+
+  // Remove a specific pin from a field
+  function removePin(fieldId, pinIdx) {
+    setCoords(prev => {
+      const updated = (prev[fieldId] || []).filter((_, i) => i !== pinIdx);
+      return { ...prev, [fieldId]: updated };
+    });
+  }
+
+  // Remove ALL pins from a field
+  function clearField(fieldId) {
+    setCoords(prev => ({ ...prev, [fieldId]: [] }));
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -123,77 +146,107 @@ export default function FieldMapper({
     <div className="mapper-shell">
       <aside className="mapper-sidebar">
 
-        {/* Header */}
         <div className="sidebar-header">
           <div className="sidebar-brand-row">
             <div className="sidebar-brand">H&amp;A Field Mapper</div>
             {onManageFields && (
-              <button className="btn-manage-fields" onClick={onManageFields} title="Add or edit fields">
+              <button className="btn-manage-fields" onClick={onManageFields}>
                 Manage fields
               </button>
             )}
           </div>
           <div className="sidebar-prog-label">{mappedCount} / {FIELDS.length} placed</div>
           <div className="sidebar-prog-track">
-            <div className="sidebar-prog-fill" style={{ width: FIELDS.length ? `${(mappedCount / FIELDS.length) * 100}%` : '0%' }} />
+            <div className="sidebar-prog-fill"
+              style={{ width: FIELDS.length ? `${(mappedCount / FIELDS.length) * 100}%` : '0%' }} />
           </div>
         </div>
 
-        {/* Current field cue */}
+        {/* Current field instruction */}
         <div className="sidebar-cue">
           {FIELDS.length === 0 ? (
             <div className="cue-empty">
-              No fields defined yet.{' '}
-              {onManageFields && (
-                <button className="cue-link" onClick={onManageFields}>Add fields →</button>
-              )}
+              No fields yet.{' '}
+              {onManageFields && <button className="cue-link" onClick={onManageFields}>Add fields →</button>}
             </div>
-          ) : allMapped ? (
-            <div className="cue-done">✓ All fields placed</div>
           ) : (
             <div className="cue-active">
               <div className="cue-num">{fieldIdx + 1}</div>
               <div>
-                <div className="cue-title">Click to place:</div>
+                <div className="cue-title">
+                  {(coords[field?.id] || []).length === 0
+                    ? 'Click to place:'
+                    : 'Click to add another spot:'}
+                </div>
                 <div className="cue-field">{field?.label}</div>
                 <div className="cue-sample">e.g. "{field?.sampleValue}"</div>
                 <div className="cue-page">Page {field?.page}</div>
+                {(coords[field?.id] || []).length > 0 && (
+                  <div className="cue-count">
+                    {(coords[field?.id] || []).length} spot{(coords[field?.id] || []).length > 1 ? 's' : ''} placed
+                  </div>
+                )}
               </div>
             </div>
           )}
-          {!allMapped && FIELDS.length > 0 && (
-            <button className="btn-skip" onClick={() => setFieldIdx(i => Math.min(i + 1, FIELDS.length - 1))}>
-              Skip →
+          {FIELDS.length > 0 && (
+            <button className="btn-skip"
+              onClick={() => setFieldIdx(i => Math.min(i + 1, FIELDS.length - 1))}>
+              Next field →
             </button>
           )}
         </div>
 
         {/* Field list */}
         <div className="field-list">
-          {FIELDS.map((f, i) => (
-            <div
-              key={f.id}
-              className={`fitem ${i === fieldIdx ? 'fitem--active' : ''} ${coords[f.id] ? 'fitem--done' : ''}`}
-              onClick={() => setFieldIdx(i)}
-            >
-              <div className="fitem-dot">
-                {coords[f.id] ? '✓' : <span style={{ opacity: 0.4 }}>{i + 1}</span>}
+          {FIELDS.map((f, i) => {
+            const positions = coords[f.id] || [];
+            const isActive  = i === fieldIdx;
+            return (
+              <div key={f.id}>
+                <div
+                  className={`fitem ${isActive ? 'fitem--active' : ''} ${positions.length > 0 ? 'fitem--done' : ''}`}
+                  onClick={() => setFieldIdx(i)}
+                >
+                  <div className="fitem-dot">
+                    {positions.length > 0
+                      ? <span className="fitem-count">{positions.length}</span>
+                      : <span style={{ opacity: 0.4 }}>{i + 1}</span>}
+                  </div>
+                  <div className="fitem-info">
+                    <div className="fitem-label">{f.label}</div>
+                    <div className="fitem-page">Page {f.page}</div>
+                  </div>
+                  {positions.length > 0 && (
+                    <button className="fitem-clear"
+                      onClick={e => { e.stopPropagation(); clearField(f.id); }}
+                      title="Remove all pins">×</button>
+                  )}
+                </div>
+
+                {/* Show individual pins with remove buttons when active */}
+                {isActive && positions.length > 0 && (
+                  <div className="pin-list">
+                    {positions.map((pos, pi) => (
+                      <div key={pi} className="pin-item">
+                        <span className="pin-label">
+                          Spot {pi + 1} — page {pos.page}
+                        </span>
+                        <button className="pin-remove"
+                          onClick={() => removePin(f.id, pi)}>
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div className="pin-add-hint">Click the PDF to add another spot</div>
+                  </div>
+                )}
               </div>
-              <div className="fitem-info">
-                <div className="fitem-label">{f.label}</div>
-                <div className="fitem-page">Page {f.page}</div>
-              </div>
-              {coords[f.id] && (
-                <button className="fitem-clear" onClick={e => {
-                  e.stopPropagation();
-                  const n = { ...coords }; delete n[f.id]; setCoords(n);
-                }}>×</button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Footer: save + actions */}
+        {/* Footer */}
         <div className="sidebar-footer">
           {!showPin ? (
             <button className="btn-save" onClick={() => setShowPin(true)}>
@@ -223,12 +276,26 @@ export default function FieldMapper({
                   <p style={{ marginTop: 6, fontSize: 11 }}>
                     Paste into <code>FIELD_COORDINATES</code> in Vercel → redeploy:
                   </p>
-                  <textarea
-                    readOnly
-                    className="coord-output"
-                    value={saveResult.value}
-                    onClick={e => e.target.select()}
-                  />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <textarea
+                      readOnly
+                      className="coord-output"
+                      value={saveResult.value}
+                      onClick={e => e.target.select()}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      className="btn-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(saveResult.value).then(() => {
+                          const btn = document.activeElement;
+                          const orig = btn.textContent;
+                          btn.textContent = 'Copied!';
+                          setTimeout(() => { btn.textContent = orig; }, 2000);
+                        });
+                      }}
+                    >Copy</button>
+                  </div>
                 </>
               )}
             </div>
@@ -265,20 +332,23 @@ export default function FieldMapper({
         <div style={{ position: 'relative', display: 'inline-block' }}>
           <canvas
             ref={canvasRef}
-            style={{ display: 'block', cursor: 'crosshair', maxWidth: '100%', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}
+            style={{ display: 'block', cursor: 'crosshair', maxWidth: '100%',
+                     boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}
             onClick={handleClick}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => setCursor(null)}
           />
           {cursor && !loading && field && (
             <div className="cursor-tip" style={{ left: cursor.x + 14, top: cursor.y - 10 }}>
-              {field.label}
+              {(coords[field.id] || []).length === 0
+                ? `Place: ${field.label}`
+                : `Add spot ${(coords[field.id] || []).length + 1}: ${field.label}`}
             </div>
           )}
         </div>
         {field && (
           <div className="canvas-hint">
-            Page {field.page} — click exactly where the text should appear
+            Page {field.page} — each click adds a new spot for this field
           </div>
         )}
       </main>

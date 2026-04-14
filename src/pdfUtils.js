@@ -23,6 +23,19 @@ export function canvasToPDF(cx, cy, pdfWidth, pdfHeight, scale) {
   };
 }
 
+/**
+ * Normalise the coordinate store so every field is an array of positions.
+ * Supports both the old format { page, pdfX, pdfY } and the new
+ * array format [{ page, pdfX, pdfY }, ...].
+ */
+export function normaliseCoords(coordinates) {
+  const out = {};
+  for (const [id, val] of Object.entries(coordinates)) {
+    out[id] = Array.isArray(val) ? val : [val];
+  }
+  return out;
+}
+
 export async function fillPDF(templateBytes, coordinates, offer, headerPages) {
   const pdfDoc = await PDFDocument.load(templateBytes);
   const font   = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -35,17 +48,28 @@ export async function fillPDF(templateBytes, coordinates, offer, headerPages) {
     pages[pageNum - 1].drawText(String(text), { x, y, size, font, color });
   }
 
-  for (const [id, coord] of Object.entries(coordinates)) {
-    if (offer[id]) stamp(coord.page, coord.pdfX, coord.pdfY, offer[id]);
+  const norm = normaliseCoords(coordinates);
+
+  // Stamp every position for every field
+  for (const [id, positions] of Object.entries(norm)) {
+    if (!offer[id]) continue;
+    for (const pos of positions) {
+      stamp(pos.page, pos.pdfX, pos.pdfY, offer[id]);
+    }
   }
 
-  // Repeat address + date headers across all header pages
-  const ah = coordinates['address_header'];
-  const dh = coordinates['date_header'];
+  // Repeat address + date headers across all header pages using
+  // the FIRST mapped position as the template offset
+  const ahPositions = norm['address_header'];
+  const dhPositions = norm['date_header'];
   for (const pg of headerPages) {
-    if (pg === 5) continue;
-    if (ah && offer['address_header']) stamp(pg, ah.pdfX, ah.pdfY, offer['address_header']);
-    if (dh && offer['date_header'])    stamp(pg, dh.pdfX, dh.pdfY, offer['date_header']);
+    if (pg === 5) continue; // already stamped above via the main loop
+    if (ahPositions?.[0] && offer['address_header']) {
+      stamp(pg, ahPositions[0].pdfX, ahPositions[0].pdfY, offer['address_header']);
+    }
+    if (dhPositions?.[0] && offer['date_header']) {
+      stamp(pg, dhPositions[0].pdfX, dhPositions[0].pdfY, offer['date_header']);
+    }
   }
 
   return await pdfDoc.save();

@@ -40,7 +40,7 @@ export default function App() {
   // into Vercel and redeploy to persist across sessions.
   function handleFieldsSaved(updatedFields) {
     setFields(updatedFields);
-    setShowManager(false);
+    // Don't close the modal — user needs to copy the FIELD_DEFINITIONS value first
   }
 
   function handleMapComplete(coords) {

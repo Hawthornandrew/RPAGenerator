@@ -13,7 +13,7 @@ export async function renderPageToCanvas(pdfBytes, pageIndex, containerWidth) {
   canvas.width   = Math.floor(scaled.width);
   canvas.height  = Math.floor(scaled.height);
   await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaled }).promise;
-  return { canvas, pdfWidth: viewport.width, pdfHeight: viewport.height, scale };
+  return { canvas, pdfWidth: viewport.width, pdfHeight: viewport.height, scale, totalPages: pdf.numPages };
 }
 
 export function canvasToPDF(cx, cy, pdfWidth, pdfHeight, scale) {

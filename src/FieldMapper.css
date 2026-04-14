@@ -72,3 +72,13 @@
 .pin-add-hint { font-size: 10px; color: rgba(255,255,255,0.25); margin-top: 5px; font-style: italic; }
 .btn-copy { padding: 4px 10px; font-size: 11px; background: var(--green); color: #fff; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; align-self: flex-start; margin-top: 2px; }
 .btn-copy:hover { background: #2f5a0d; }
+
+/* Page navigation */
+.page-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+.page-btn { padding: 6px 14px; font-size: 13px; background: #fff; border: 1px solid var(--border-mid); border-radius: var(--radius-md); cursor: pointer; color: var(--ink-mid); transition: all 0.15s; font-family: inherit; }
+.page-btn:hover:not(:disabled) { border-color: var(--green-mid); color: var(--green); }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.page-input-row { display: flex; align-items: center; gap: 6px; }
+.page-label { font-size: 13px; color: var(--ink-mid); }
+.page-input { width: 52px; padding: 5px 8px; font-size: 13px; text-align: center; border: 1px solid var(--border-mid); border-radius: var(--radius-sm); outline: none; font-family: inherit; color: var(--ink); background: #fff; }
+.page-input:focus { border-color: var(--green-mid); box-shadow: 0 0 0 2px rgba(99,153,34,0.12); }

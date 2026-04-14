@@ -15,6 +15,8 @@ export default function FieldMapper({
   // coords: { [fieldId]: [ { page, pdfX, pdfY }, ... ] }
   const [coords,     setCoords]     = useState(() => normaliseCoords(initialCoords || {}));
   const [fieldIdx,   setFieldIdx]   = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages,  setTotalPages]  = useState(29); // RPA template default
   const [pageInfo,   setPageInfo]   = useState(null);
   const [pageCanvas, setPageCanvas] = useState(null);
   const [loading,    setLoading]    = useState(false);
@@ -28,6 +30,10 @@ export default function FieldMapper({
   const canvasRef    = useRef(null);
 
   const field       = FIELDS[fieldIdx];
+
+  // Keep currentPage in sync when active field changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (field?.page) setCurrentPage(field.page); }, [fieldIdx]);
   // A field is "placed" if it has at least one coordinate
   const mappedCount = FIELDS.filter(f => (coords[f.id] || []).length > 0).length;
   const allMapped   = FIELDS.length > 0 && mappedCount === FIELDS.length;
@@ -47,10 +53,15 @@ export default function FieldMapper({
     if (!pdfBytes || !field) return;
     setLoading(true);
     const w = containerRef.current?.clientWidth || 780;
-    renderPageToCanvas(pdfBytes, field.page, w)
-      .then(result => { setPageCanvas(result); setPageInfo(result); setLoading(false); })
+    renderPageToCanvas(pdfBytes, currentPage, w)
+      .then(result => {
+        setPageCanvas(result);
+        setPageInfo(result);
+        if (result.totalPages) setTotalPages(result.totalPages);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
-  }, [pdfBytes, fieldIdx, FIELDS.length]);
+  }, [pdfBytes, currentPage, FIELDS.length]);
 
   // Redraw canvas with all pins for this page
   useEffect(() => {
@@ -61,7 +72,7 @@ export default function FieldMapper({
     ctx.drawImage(pageCanvas.canvas, 0, 0);
 
     FIELDS.forEach(f => {
-      const positions = (coords[f.id] || []).filter(p => p.page === field.page);
+      const positions = (coords[f.id] || []).filter(p => p.page === currentPage);
       if (!positions.length) return;
       const isActive = f.id === field.id;
 
@@ -107,7 +118,7 @@ export default function FieldMapper({
     // Add this position to the field's array (allows multiple pins)
     setCoords(prev => ({
       ...prev,
-      [field.id]: [...(prev[field.id] || []), { page: field.page, pdfX, pdfY }],
+      [field.id]: [...(prev[field.id] || []), { page: currentPage, pdfX, pdfY }],
     }));
   }, [pageInfo, field]);
 
@@ -346,12 +357,44 @@ export default function FieldMapper({
             </div>
           )}
         </div>
+        {/* Page navigation */}
+        <div className="page-nav">
+          <button
+            className="page-btn"
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+          >← Prev</button>
+
+          <div className="page-input-row">
+            <span className="page-label">Page</span>
+            <input
+              type="number"
+              className="page-input"
+              value={currentPage}
+              min={1}
+              max={totalPages}
+              onChange={e => {
+                const n = parseInt(e.target.value);
+                if (!isNaN(n) && n >= 1 && n <= totalPages) setCurrentPage(n);
+              }}
+            />
+            <span className="page-label">of {totalPages}</span>
+          </div>
+
+          <button
+            className="page-btn"
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+          >Next →</button>
+        </div>
+
         {field && (
           <div className="canvas-hint">
-            Page {field.page} — each click adds a new spot for this field
+            Placing: <strong>{field?.label}</strong> — click to add a spot on page {currentPage}
           </div>
         )}
       </main>
     </div>
   );
 }
+

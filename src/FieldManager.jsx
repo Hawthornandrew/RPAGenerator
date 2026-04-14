@@ -267,33 +267,54 @@ export default function FieldManager({ fields, onSave, onClose, adminPin: initia
 
         {/* Save to server */}
         <div className="fm-save-bar">
-          <div className="fm-pin-row">
-            <input
-              type="password"
-              className="fm-pin-input"
-              placeholder="Admin PIN"
-              value={pin}
-              onChange={e => updatePin(e.target.value)}
-            />
-            <button className="fm-save-btn" onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving…' : 'Save to server'}
-            </button>
+          <div className="fm-save-top-row">
+            <div className="fm-pin-row">
+              <input
+                type="password"
+                className="fm-pin-input"
+                placeholder="Admin PIN"
+                value={pin}
+                onChange={e => updatePin(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+              />
+              <button className="fm-save-btn" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save to server'}
+              </button>
+            </div>
+            <p className="fm-save-explainer">
+              Saves your field list. You'll get a value to paste into Vercel env vars.
+            </p>
           </div>
           {saveResult && (
             <div className={`fm-save-result ${saveResult.ok ? 'fm-save-result--ok' : 'fm-save-result--err'}`}>
-              <p>{saveResult.message}</p>
+              {!saveResult.ok && <p>{saveResult.message}</p>}
               {saveResult.ok && saveResult.value && (
                 <>
                   <p className="fm-save-hint">
-                    Paste this into your <code>FIELD_DEFINITIONS</code> env var in Vercel, then redeploy.
-                    New fields will appear in the mapper for position placement, and in the offer form.
+                    <strong>Done!</strong> Now copy this value → paste into{' '}
+                    <code>FIELD_DEFINITIONS</code> in Vercel → Save → Redeploy.
                   </p>
-                  <textarea
-                    readOnly
-                    className="fm-coord-output"
-                    value={saveResult.value}
-                    onClick={e => e.target.select()}
-                  />
+                  <div className="fm-copy-row">
+                    <textarea
+                      readOnly
+                      className="fm-coord-output"
+                      value={saveResult.value}
+                      onClick={e => e.target.select()}
+                    />
+                    <button
+                      className="fm-copy-btn"
+                      onClick={() => {
+                        navigator.clipboard.writeText(saveResult.value).then(() => {
+                          const btn = document.activeElement;
+                          const orig = btn.textContent;
+                          btn.textContent = 'Copied!';
+                          setTimeout(() => { btn.textContent = orig; }, 2000);
+                        });
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </>
               )}
             </div>

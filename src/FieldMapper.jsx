@@ -32,7 +32,7 @@ export default function FieldMapper({
   const field       = FIELDS[fieldIdx];
 
   // Keep currentPage in sync when active field changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  
   useEffect(() => { if (field?.page) setCurrentPage(field.page); }, [fieldIdx]);
   // A field is "placed" if it has at least one coordinate
   const mappedCount = FIELDS.filter(f => (coords[f.id] || []).length > 0).length;
